@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Symulator Federal Signal AS 422 Polonia - Gapless Audio</title>
+    <title>Symulator Federal Signal AS 422 Polonia - Poprawiona Logika</title>
     <style>
         body {
             background-color: #1a1a1a;
@@ -126,10 +126,12 @@
                 <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
             </div>
 
+            <!-- Przycisk Syreny (Modulacje) -->
             <div class="btn" id="btn-siren" onclick="toggleSiren()">
                 <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
             </div>
             
+            <!-- Przycisk Air Horn -->
             <div class="btn" id="btn-ah">
                 <span class="btn-text">AH</span>
             </div>
@@ -158,31 +160,39 @@
     </div>
 
     <script>
-        // --- NOWY SILNIK AUDIO: Web Audio API ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioCtx;
         const audioBuffers = {};
         
         let isSirenActive = false;
+        let isAhPressed = false; // Blokada przed dublowaniem eventów
         let currentModIndex = 0;
-        // Dodano 4 dźwięk: priority
         const sirenModes = ['wilk', 'pies', 'leon', 'priority']; 
 
         let currentSirenSource = null;
         let currentHornSource = null;
 
-        // Funkcja wczytująca pliki do pamięci (RAM) dla natychmiastowego startu
+        // KOREKTOR GŁOŚNOŚCI (Wartość 1.0 to standard, 2.0 to 2x głośniej, itd.)
+        const volumes = {
+            'wilk': 1.0,
+            'pies': 1.0,
+            'leon': 1.0,
+            'priority': 2.5,  // Podkręcone x2.5
+            'horn': 3.0       // Podkręcone x3
+        };
+
         async function initAudioSystem() {
-            if (audioCtx) return; // Zapobiega wielokrotnej inicjalizacji
+            if (audioCtx) return;
             
             audioCtx = new AudioContext();
             
+            // Sugeruję zmianę formatu priority i horn na wav w plikach i tutaj, aby usunąć opóźnienie
             const files = {
                 'wilk': 'wilk.mp3',
                 'pies': 'pies.mp3',
                 'leon': 'leon.mp3',
-                'priority': 'priority.mp3', // Nowy plik
-                'horn': 'horn.mp3'
+                'priority': 'priority.wav', // Zmień na .wav po przycięciu
+                'horn': 'horn.wav'          // Zmień na .wav po przycięciu
             };
 
             for (const [name, url] of Object.entries(files)) {
@@ -197,14 +207,22 @@
             }
         }
 
-        // Pomocnicza funkcja odtwarzająca dźwięk z bufora
+        // Zmodyfikowana funkcja odtwarzająca z obsługą głośności
         function playBuffer(bufferName, loop = true) {
             if (!audioCtx || !audioBuffers[bufferName]) return null;
             
             const source = audioCtx.createBufferSource();
             source.buffer = audioBuffers[bufferName];
             source.loop = loop;
-            source.connect(audioCtx.destination);
+            
+            // Wzmacniacz
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.value = volumes[bufferName] || 1.0;
+            
+            // Połączenie: Źródło -> Wzmacniacz -> Głośniki
+            source.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
             source.start(0);
             return source;
         }
@@ -217,20 +235,31 @@
             const btnSiren = document.getElementById('btn-siren');
 
             if (!isSirenActive) {
-                // START
                 isSirenActive = true;
-                currentModIndex = 0; // Zawsze startujemy od Wilka
+                currentModIndex = 0; 
                 btnSiren.classList.add('active');
-                currentSirenSource = playBuffer(sirenModes[currentModIndex]);
-            } else {
-                // ZMIANA MODULACJI
+                
+                // Zabezpieczenie przed dziwnymi błędami
                 if (currentSirenSource) {
-                    currentSirenSource.stop();
+                    try { currentSirenSource.stop(); } catch(e){}
                 }
                 
-                // Przejście przez: 0(wilk) -> 1(pies) -> 2(leon) -> 3(priority) -> 0(wilk)...
+                // Jeśli klakson aktualnie gra, odpalamy syrenę "w tle", 
+                // ale nie uruchamiamy jej dźwięku, dopóki klakson nie zostanie puszczony
+                if (!isAhPressed) {
+                    currentSirenSource = playBuffer(sirenModes[currentModIndex]);
+                }
+            } else {
+                if (currentSirenSource) {
+                    try { currentSirenSource.stop(); } catch(e){}
+                    currentSirenSource = null;
+                }
+                
                 currentModIndex = (currentModIndex + 1) % sirenModes.length;
-                currentSirenSource = playBuffer(sirenModes[currentModIndex]);
+                
+                if (!isAhPressed) {
+                    currentSirenSource = playBuffer(sirenModes[currentModIndex]);
+                }
             }
         }
 
@@ -238,40 +267,51 @@
         const btnAh = document.getElementById('btn-ah');
         btnAh.addEventListener('pointerdown', startAirHorn);
         btnAh.addEventListener('pointerup', stopAirHorn);
-        btnAh.addEventListener('pointerleave', stopAirHorn); // Zabezpieczenie przed zjechaniem kursorem
+        btnAh.addEventListener('pointerleave', stopAirHorn);
+        btnAh.addEventListener('pointercancel', stopAirHorn);
 
         async function startAirHorn(e) {
             e.preventDefault();
+            
+            // Zabezpieczenie przed dublowaniem uruchomienia
+            if (isAhPressed) return;
+            isAhPressed = true;
+            
             await initAudioSystem();
             if (audioCtx.state === 'suspended') audioCtx.resume();
             
             btnAh.classList.add('active');
 
-            // Zatrzymaj aktualnie grającą syrenę (na czas użycia AH)
             if (currentSirenSource) {
-                currentSirenSource.stop();
+                try { currentSirenSource.stop(); } catch(e){}
                 currentSirenSource = null;
             }
 
-            // Start Air Horn
             if (currentHornSource) {
-                currentHornSource.stop();
+                try { currentHornSource.stop(); } catch(e){}
             }
             currentHornSource = playBuffer('horn', true);
         }
 
         function stopAirHorn(e) {
             if (e) e.preventDefault();
+            
+            // Jeśli już jest wyłączony, nie rób nic (zapobiega to uruchomieniu 2 syren!)
+            if (!isAhPressed) return;
+            isAhPressed = false;
+            
             btnAh.classList.remove('active');
 
-            // Zatrzymujemy Air Horn
             if (currentHornSource) {
-                currentHornSource.stop();
+                try { currentHornSource.stop(); } catch(e){}
                 currentHornSource = null;
             }
 
-            // Jeśli syrena była włączona - przywracamy wybraną modulację
             if (isSirenActive && audioCtx) {
+                // Bezpieczne wznowienie syreny
+                if (currentSirenSource) {
+                    try { currentSirenSource.stop(); } catch(e){}
+                }
                 currentSirenSource = playBuffer(sirenModes[currentModIndex]);
             }
         }
@@ -279,20 +319,19 @@
         // --- OBSŁUGA PRZYCISKU OFF ---
         function turnOffAll() {
             isSirenActive = false;
+            isAhPressed = false; // Reset całkowity
             
             if (currentSirenSource) {
-                currentSirenSource.stop();
+                try { currentSirenSource.stop(); } catch(e){}
                 currentSirenSource = null;
             }
             if (currentHornSource) {
-                currentHornSource.stop();
+                try { currentHornSource.stop(); } catch(e){}
                 currentHornSource = null;
             }
             
-            // Wyłączamy podświetlenie wszystkich przycisków
             document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
             
-            // Mignięcie przycisku OFF
             const btnOff = document.getElementById('btn-off');
             btnOff.style.backgroundColor = '#999';
             setTimeout(() => { btnOff.style.backgroundColor = ''; }, 150);

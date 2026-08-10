@@ -172,13 +172,13 @@
         let currentSirenSource = null;
         let currentHornSource = null;
 
-        // KOREKTOR GŁOŚNOŚCI (Wartość 1.0 to standard, 2.0 to 2x głośniej, itd.)
+        // KOREKTOR GŁOŚNOŚCI (Wartość 1.0 to standard, 2.5 to 2.5x głośniej, itd.)
         const volumes = {
             'wilk': 1.0,
             'pies': 1.0,
             'leon': 1.0,
             'priority': 2.5,  // Podkręcone x2.5
-            'horn': 3.0       // Podkręcone x3
+            'horn': 3.0       // Podkręcone x3.0
         };
 
         async function initAudioSystem() {
@@ -186,13 +186,13 @@
             
             audioCtx = new AudioContext();
             
-            // Sugeruję zmianę formatu priority i horn na wav w plikach i tutaj, aby usunąć opóźnienie
+            // Przywróciłem tutaj rozszerzenia .mp3 dla wszystkich plików
             const files = {
                 'wilk': 'wilk.mp3',
                 'pies': 'pies.mp3',
                 'leon': 'leon.mp3',
-                'priority': 'priority.wav', // Zmień na .wav po przycięciu
-                'horn': 'horn.wav'          // Zmień na .wav po przycięciu
+                'priority': 'priority.mp3', 
+                'horn': 'horn.mp3'          
             };
 
             for (const [name, url] of Object.entries(files)) {
@@ -207,7 +207,6 @@
             }
         }
 
-        // Zmodyfikowana funkcja odtwarzająca z obsługą głośności
         function playBuffer(bufferName, loop = true) {
             if (!audioCtx || !audioBuffers[bufferName]) return null;
             

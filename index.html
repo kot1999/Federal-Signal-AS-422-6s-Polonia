@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Symulator Federal Signal AS 422 Polonia - Real Audio</title>
+    <title>Symulator Federal Signal AS 422 Polonia - Gapless Audio</title>
     <style>
         body {
             background-color: #1a1a1a;
@@ -14,7 +14,7 @@
             margin: 0;
             font-family: 'Arial', sans-serif;
             user-select: none;
-            touch-action: manipulation; /* Zapobiega przybliżaniu na telefonach */
+            touch-action: manipulation;
         }
 
         .remote {
@@ -72,7 +72,6 @@
                 inset 0 2px 4px rgba(255,255,255,0.8), 
                 0 4px 6px rgba(0,0,0,0.4);
             transition: background-color 0.1s, box-shadow 0.1s, transform 0.1s;
-            /* Ważne by dzieci nie przechwytywały zdarzeń pointer */
             pointer-events: auto;
         }
         
@@ -127,12 +126,10 @@
                 <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
             </div>
 
-            <!-- Przycisk Syreny (Modulacje) -->
             <div class="btn" id="btn-siren" onclick="toggleSiren()">
                 <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
             </div>
             
-            <!-- Przycisk Air Horn (Momentary / Chwilowy) -->
             <div class="btn" id="btn-ah">
                 <span class="btn-text">AH</span>
             </div>
@@ -161,110 +158,147 @@
     </div>
 
     <script>
-        // --- KONFIGURACJA AUDIO ---
-        // Aby zadziałało, musisz mieć w tym samym folderze pliki: wilk.mp3, pies.mp3, leon.mp3, horn.mp3
-        const sirenTracks = [
-            new Audio('wilk.mp3'),
-            new Audio('pies.mp3'),
-            new Audio('leon.mp3')
-        ];
+        // --- NOWY SILNIK AUDIO: Web Audio API ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        const audioBuffers = {};
         
-        // Ustawienie zapętlenia dla modulacji syreny
-        sirenTracks.forEach(track => { track.loop = true; });
-        
-        const airHornAudio = new Audio('horn.mp3');
-        // AirHorn zazwyczaj nie jest zapętlany długo, ale można to zrobić, jeśli nagranie jest krótkie i ma trwać podczas trzymania.
-        airHornAudio.loop = true; 
-
         let isSirenActive = false;
-        let currentModIndex = 0; // 0: Wilk, 1: Pies, 2: Leon
+        let currentModIndex = 0;
+        // Dodano 4 dźwięk: priority
+        const sirenModes = ['wilk', 'pies', 'leon', 'priority']; 
 
-        // Pobranie elementów HTML
-        const btnSiren = document.getElementById('btn-siren');
-        const btnAh = document.getElementById('btn-ah');
+        let currentSirenSource = null;
+        let currentHornSource = null;
 
-        // Funkcja pobierająca aktualnie wybraną modulację syreny
-        function getActiveSirenTrack() {
-            return sirenTracks[currentModIndex];
-        }
+        // Funkcja wczytująca pliki do pamięci (RAM) dla natychmiastowego startu
+        async function initAudioSystem() {
+            if (audioCtx) return; // Zapobiega wielokrotnej inicjalizacji
+            
+            audioCtx = new AudioContext();
+            
+            const files = {
+                'wilk': 'wilk.mp3',
+                'pies': 'pies.mp3',
+                'leon': 'leon.mp3',
+                'priority': 'priority.mp3', // Nowy plik
+                'horn': 'horn.mp3'
+            };
 
-        // --- OBSŁUGA SYRENY (Przycisk Nutek) ---
-        function toggleSiren() {
-            if (!isSirenActive) {
-                // 1. Włączenie syreny (start od pierwszej modulacji)
-                isSirenActive = true;
-                currentModIndex = 0;
-                btnSiren.classList.add('active');
-                getActiveSirenTrack().play().catch(e => console.log("Brak pliku wilk.mp3", e));
-            } else {
-                // 2. Jeśli gra, zmień modulację na następną
-                let oldTrack = getActiveSirenTrack();
-                oldTrack.pause();
-                oldTrack.currentTime = 0; // Resetujemy dźwięk starej modulacji
-
-                currentModIndex = (currentModIndex + 1) % sirenTracks.length; // Przełącza 0 -> 1 -> 2 -> 0...
-                
-                getActiveSirenTrack().play().catch(e => console.log("Brak pliku mp3 dla modulacji", e));
+            for (const [name, url] of Object.entries(files)) {
+                try {
+                    const response = await fetch(url);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    audioBuffers[name] = audioBuffer;
+                } catch (error) {
+                    console.error(`Nie udało się załadować dźwięku ${url}`, error);
+                }
             }
         }
 
-        // --- OBSŁUGA AIR HORN (Momentary / Chwilowy) ---
-        // Zdarzenia pointer zadziałają zarówno na kliknięcie myszą jak i na dotyk na telefonie
+        // Pomocnicza funkcja odtwarzająca dźwięk z bufora
+        function playBuffer(bufferName, loop = true) {
+            if (!audioCtx || !audioBuffers[bufferName]) return null;
+            
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[bufferName];
+            source.loop = loop;
+            source.connect(audioCtx.destination);
+            source.start(0);
+            return source;
+        }
+
+        // --- OBSŁUGA SYRENY (Nutka) ---
+        async function toggleSiren() {
+            await initAudioSystem();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const btnSiren = document.getElementById('btn-siren');
+
+            if (!isSirenActive) {
+                // START
+                isSirenActive = true;
+                currentModIndex = 0; // Zawsze startujemy od Wilka
+                btnSiren.classList.add('active');
+                currentSirenSource = playBuffer(sirenModes[currentModIndex]);
+            } else {
+                // ZMIANA MODULACJI
+                if (currentSirenSource) {
+                    currentSirenSource.stop();
+                }
+                
+                // Przejście przez: 0(wilk) -> 1(pies) -> 2(leon) -> 3(priority) -> 0(wilk)...
+                currentModIndex = (currentModIndex + 1) % sirenModes.length;
+                currentSirenSource = playBuffer(sirenModes[currentModIndex]);
+            }
+        }
+
+        // --- OBSŁUGA AIR HORN (Momentary) ---
+        const btnAh = document.getElementById('btn-ah');
         btnAh.addEventListener('pointerdown', startAirHorn);
         btnAh.addEventListener('pointerup', stopAirHorn);
-        btnAh.addEventListener('pointerleave', stopAirHorn); // Zabezpieczenie jak zjedziesz kursorem/palcem poza przycisk
+        btnAh.addEventListener('pointerleave', stopAirHorn); // Zabezpieczenie przed zjechaniem kursorem
 
-        function startAirHorn(e) {
-            e.preventDefault(); // Zapobiega domyślnym akcjom przeglądarki
+        async function startAirHorn(e) {
+            e.preventDefault();
+            await initAudioSystem();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
             btnAh.classList.add('active');
-            
-            // Jeśli gra syrena - wyciszamy/pauzujemy ją na chwilę
-            if (isSirenActive) {
-                getActiveSirenTrack().pause();
+
+            // Zatrzymaj aktualnie grającą syrenę (na czas użycia AH)
+            if (currentSirenSource) {
+                currentSirenSource.stop();
+                currentSirenSource = null;
             }
-            
-            // Startujemy Air Horn od początku
-            airHornAudio.currentTime = 0;
-            airHornAudio.play().catch(err => console.log("Brak pliku horn.mp3"));
+
+            // Start Air Horn
+            if (currentHornSource) {
+                currentHornSource.stop();
+            }
+            currentHornSource = playBuffer('horn', true);
         }
 
         function stopAirHorn(e) {
             if (e) e.preventDefault();
             btnAh.classList.remove('active');
-            
+
             // Zatrzymujemy Air Horn
-            airHornAudio.pause();
-            
-            // Jeśli syrena była włączona - przywracamy ją po puszczeniu przycisku AH
-            if (isSirenActive) {
-                getActiveSirenTrack().play().catch(err => console.log(err));
+            if (currentHornSource) {
+                currentHornSource.stop();
+                currentHornSource = null;
+            }
+
+            // Jeśli syrena była włączona - przywracamy wybraną modulację
+            if (isSirenActive && audioCtx) {
+                currentSirenSource = playBuffer(sirenModes[currentModIndex]);
             }
         }
 
         // --- OBSŁUGA PRZYCISKU OFF ---
         function turnOffAll() {
-            // Zatrzymujemy modulacje
             isSirenActive = false;
-            sirenTracks.forEach(track => {
-                track.pause();
-                track.currentTime = 0;
-            });
-
-            // Zatrzymujemy Air Horn
-            airHornAudio.pause();
-            airHornAudio.currentTime = 0;
+            
+            if (currentSirenSource) {
+                currentSirenSource.stop();
+                currentSirenSource = null;
+            }
+            if (currentHornSource) {
+                currentHornSource.stop();
+                currentHornSource = null;
+            }
             
             // Wyłączamy podświetlenie wszystkich przycisków
             document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
             
-            // Krótkie mignięcie przycisku OFF na szaro dla feedbacku
+            // Mignięcie przycisku OFF
             const btnOff = document.getElementById('btn-off');
             btnOff.style.backgroundColor = '#999';
             setTimeout(() => { btnOff.style.backgroundColor = ''; }, 150);
         }
 
-        // --- OBSŁUGA RESZTY PRZYCISKÓW (Światła itp.) ---
-        // Dla przycisków pomocniczych, które po prostu się włączają i wyłączają
+        // --- OBSŁUGA ŚWIATEŁ (Toggle) ---
         function toggleLightBtn(id) {
             const btn = document.getElementById(id);
             btn.classList.toggle('active');

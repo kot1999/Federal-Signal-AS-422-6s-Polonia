@@ -221,16 +221,13 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-radio" onclick="toggleLightBtn('btn-radio')">
                         <svg viewBox="0 0 60 60">
-                            <!-- Gruszka mikrofonu pod kątem -->
                             <g transform="translate(25, 26) rotate(-32)">
                                 <rect x="-13" y="-10" width="24" height="19" rx="3" fill="none" class="icon-stroke" stroke-width="2.6"/>
                                 <path d="M-10,-10 L-10,9" class="icon-stroke" stroke-width="1.8"/>
                                 <circle cx="0" cy="-0.5" r="5.5" fill="none" class="icon-stroke" stroke-width="2.2"/>
                                 <circle cx="0" cy="-0.5" r="2" class="icon-fill"/>
-                                <!-- Zaczep z boku gruszki -->
                                 <rect x="-2" y="-13" width="6" height="3" rx="1" class="icon-fill"/>
                             </g>
-                            <!-- Kręcony przewód mikrofonu -->
                             <path d="M35,33 C38,31 40,35 37,37 C40,36 43,39 40,42 C43,41 46,44 43,46 L48,48" fill="none" class="icon-stroke" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </div>
@@ -240,12 +237,10 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-siren" onclick="toggleSiren()">
                         <svg viewBox="0 0 60 60">
-                            <!-- Nutka lewa górna -->
                             <g transform="translate(19, 25) rotate(-12)">
                                 <ellipse cx="-4" cy="7" rx="5.5" ry="3.8" transform="rotate(-20 -4 7)" class="icon-fill"/>
                                 <path d="M0.5,6 L0.5,-11 C5,-8 8,-4 7,2" fill="none" class="icon-stroke" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
                             </g>
-                            <!-- Nutka prawa dolna -->
                             <g transform="translate(41, 36) rotate(8)">
                                 <ellipse cx="-4" cy="7" rx="5.5" ry="3.8" transform="rotate(-20 -4 7)" class="icon-fill"/>
                                 <path d="M0.5,6 L0.5,-11 C5,-8 8,-4 7,2" fill="none" class="icon-stroke" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -367,7 +362,9 @@
 
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioCtx;
+        let initPromise = null;
         const audioBuffers = {};
+        const loopPoints = {}; // Przechowuje wyliczone punkty bezszwowej pętli dla każdego dźwięku
         
         let isSirenActive = false;
         let isAhPressed = false;
@@ -386,14 +383,106 @@
             'horn': 3.0
         };
 
+        /**
+         * Automatycznie wykrywa aktywną część sygnału (odrzuca ciszę na początku i końcu)
+         * oraz synchronizuje fazę modulacji i przejście przez zero, aby pętla nie miała przerwy.
+         */
+        function findSeamlessLoopPoints(buffer) {
+            const data = buffer.getChannelData(0);
+            const sr = buffer.sampleRate;
+            const winSize = Math.floor(sr * 0.02); // Okno analizy 20 ms
+            const numWins = Math.floor(data.length / winSize);
+
+            if (numWins < 10) {
+                return { start: 0, end: buffer.duration };
+            }
+
+            // 1. Obliczenie energii RMS dla każdego okna (działa niezależnie od głośności pliku)
+            const rms = new Float32Array(numWins);
+            let maxRms = 0;
+            for (let w = 0; w < numWins; w++) {
+                let sum = 0;
+                const offset = w * winSize;
+                for (let i = 0; i < winSize; i++) {
+                    const v = data[offset + i];
+                    sum += v * v;
+                }
+                rms[w] = Math.sqrt(sum / winSize);
+                if (rms[w] > maxRms) maxRms = rms[w];
+            }
+
+            // Próg aktywności: 45% maksymalnej głośności danego pliku (odrzuca szum tła i wygaszanie)
+            const threshold = maxRms * 0.45;
+            let firstWin = 0;
+            let lastWin = numWins - 1;
+            while (firstWin < numWins && rms[firstWin] < threshold) firstWin++;
+            while (lastWin > firstWin && rms[lastWin] < threshold) lastWin--;
+
+            let startSample = firstWin * winSize;
+            let endSample = (lastWin + 1) * winSize;
+
+            // Wcięcie bezpieczeństwa w głąb stabilnego sygnału (pomija rozbieg i kliknięcie wyłączenia)
+            const activeLen = endSample - startSample;
+            const margin = Math.min(Math.floor(sr * 0.2), Math.floor(activeLen * 0.12));
+            startSample += margin;
+            endSample -= margin;
+
+            // 2. Wyszukanie wszystkich wznoszących przejść przez zero w aktywnym obszarze
+            const crossings = [];
+            for (let i = startSample; i < endSample; i++) {
+                if (data[i - 1] < 0 && data[i] >= 0) {
+                    crossings.push(i);
+                }
+            }
+
+            if (crossings.length < 80) {
+                return { start: startSample / sr, end: endSample / sr };
+            }
+
+            // Punkt początkowy pętli i profil 25 kolejnych okresów fali (częstotliwość chwilowa + kierunek modulacji)
+            const numCycles = 25;
+            const startIdx = crossings[0];
+            const targetPeriods = [];
+            for (let k = 0; k < numCycles; k++) {
+                targetPeriods.push(crossings[k + 1] - crossings[k]);
+            }
+
+            // 3. Szukanie w końcowej części nagrania miejsca o identycznej wysokości tonu i fazie modulacji
+            const searchStartC = Math.floor(crossings.length * 0.55);
+            const searchEndC = crossings.length - numCycles - 1;
+            let bestEndIdx = crossings[searchEndC];
+            let bestScore = Infinity;
+
+            for (let c = searchStartC; c <= searchEndC; c++) {
+                let score = 0;
+                for (let k = 0; k < numCycles; k++) {
+                    const period = crossings[c + k + 1] - crossings[c + k];
+                    const diff = period - targetPeriods[k];
+                    score += diff * diff;
+                }
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestEndIdx = crossings[c];
+                }
+            }
+
+            return {
+                start: startIdx / sr,
+                end: bestEndIdx / sr
+            };
+        }
+
         async function loadSoundFile(name, extensions) {
             for (const ext of extensions) {
-                const url = `${name}.${ext}`;
+                // Dodanie parametru czasu i cache: 'no-store' zapobiega wczytywaniu starego pliku z pamięci przeglądarki
+                const url = `${name}.${ext}?v=${Date.now()}`;
                 try {
-                    const response = await fetch(url);
+                    const response = await fetch(url, { cache: 'no-store' });
                     if (!response.ok) continue;
                     const arrayBuffer = await response.arrayBuffer();
-                    audioBuffers[name] = await audioCtx.decodeAudioData(arrayBuffer);
+                    const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    audioBuffers[name] = buffer;
+                    loopPoints[name] = findSeamlessLoopPoints(buffer);
                     return;
                 } catch (e) {}
             }
@@ -401,16 +490,19 @@
         }
 
         async function initAudioSystem() {
-            if (audioCtx) return;
-            audioCtx = new AudioContext();
-            
-            await Promise.all([
-                loadSoundFile('wilk', ['mp3', 'wav']),
-                loadSoundFile('pies', ['mp3', 'wav']),
-                loadSoundFile('leon', ['mp3', 'wav']),
-                loadSoundFile('priority', ['wav', 'mp3']),
-                loadSoundFile('horn', ['wav', 'mp3'])
-            ]);
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (!initPromise) {
+                initPromise = Promise.all([
+                    loadSoundFile('wilk', ['wav', 'mp3']),
+                    loadSoundFile('pies', ['wav', 'mp3']),
+                    loadSoundFile('leon', ['wav', 'mp3']),
+                    loadSoundFile('priority', ['wav', 'mp3']),
+                    loadSoundFile('horn', ['wav', 'mp3'])
+                ]);
+            }
+            await initPromise;
         }
 
         function playBuffer(bufferName, loop = true) {
@@ -419,6 +511,13 @@
             const source = audioCtx.createBufferSource();
             source.buffer = audioBuffers[bufferName];
             source.loop = loop;
+
+            // Zastosowanie wyliczonych punktów bezszwowej pętli (pomija ciszę na początku i końcu)
+            const pts = loopPoints[bufferName];
+            if (loop && pts) {
+                source.loopStart = pts.start;
+                source.loopEnd = pts.end;
+            }
             
             const gainNode = audioCtx.createGain();
             gainNode.gain.value = volumes[bufferName] || 1.0;
@@ -426,14 +525,14 @@
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             
-            source.start(0);
+            source.start(0, pts ? pts.start : 0);
             return source;
         }
 
         // --- OBSŁUGA SYRENY (Nutki) ---
         async function toggleSiren() {
             await initAudioSystem();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
             
             const btnSiren = document.getElementById('btn-siren');
 
@@ -466,12 +565,10 @@
         // --- OBSŁUGA AIR HORN (Chwilowy - odporny na długie przytrzymanie na dotyku) ---
         const btnAh = document.getElementById('btn-ah');
 
-        // Obsługa dotyku (blokuje wywołanie menu systemowego)
         btnAh.addEventListener('touchstart', startAirHorn, { passive: false });
         btnAh.addEventListener('touchend', stopAirHorn, { passive: false });
         btnAh.addEventListener('touchcancel', stopAirHorn, { passive: false });
 
-        // Obsługa myszy / rysika
         btnAh.addEventListener('pointerdown', startAirHorn);
         btnAh.addEventListener('pointerup', stopAirHorn);
         btnAh.addEventListener('pointerleave', stopAirHorn);
@@ -483,7 +580,7 @@
             isAhPressed = true;
             
             await initAudioSystem();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
             
             btnAh.classList.add('active');
 

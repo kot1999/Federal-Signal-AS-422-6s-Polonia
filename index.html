@@ -364,7 +364,7 @@
         let audioCtx;
         let initPromise = null;
         const audioBuffers = {};
-        const loopPoints = {}; // Przechowuje wyliczone punkty bezszwowej pętli dla każdego dźwięku
+        const loopPoints = {}; 
         
         let isSirenActive = false;
         let isAhPressed = false;
@@ -384,20 +384,18 @@
         };
 
         /**
-         * Automatycznie wykrywa aktywną część sygnału (odrzuca ciszę na początku i końcu)
-         * oraz synchronizuje fazę modulacji i przejście przez zero, aby pętla nie miała przerwy.
+         * Wyznacza punkty bezszwowej pętli wyłącznie dla dźwięku 'priority'
          */
         function findSeamlessLoopPoints(buffer) {
             const data = buffer.getChannelData(0);
             const sr = buffer.sampleRate;
-            const winSize = Math.floor(sr * 0.02); // Okno analizy 20 ms
+            const winSize = Math.floor(sr * 0.02);
             const numWins = Math.floor(data.length / winSize);
 
             if (numWins < 10) {
                 return { start: 0, end: buffer.duration };
             }
 
-            // 1. Obliczenie energii RMS dla każdego okna (działa niezależnie od głośności pliku)
             const rms = new Float32Array(numWins);
             let maxRms = 0;
             for (let w = 0; w < numWins; w++) {
@@ -411,7 +409,6 @@
                 if (rms[w] > maxRms) maxRms = rms[w];
             }
 
-            // Próg aktywności: 45% maksymalnej głośności danego pliku (odrzuca szum tła i wygaszanie)
             const threshold = maxRms * 0.45;
             let firstWin = 0;
             let lastWin = numWins - 1;
@@ -421,13 +418,11 @@
             let startSample = firstWin * winSize;
             let endSample = (lastWin + 1) * winSize;
 
-            // Wcięcie bezpieczeństwa w głąb stabilnego sygnału (pomija rozbieg i kliknięcie wyłączenia)
             const activeLen = endSample - startSample;
             const margin = Math.min(Math.floor(sr * 0.2), Math.floor(activeLen * 0.12));
             startSample += margin;
             endSample -= margin;
 
-            // 2. Wyszukanie wszystkich wznoszących przejść przez zero w aktywnym obszarze
             const crossings = [];
             for (let i = startSample; i < endSample; i++) {
                 if (data[i - 1] < 0 && data[i] >= 0) {
@@ -439,7 +434,6 @@
                 return { start: startSample / sr, end: endSample / sr };
             }
 
-            // Punkt początkowy pętli i profil 25 kolejnych okresów fali (częstotliwość chwilowa + kierunek modulacji)
             const numCycles = 25;
             const startIdx = crossings[0];
             const targetPeriods = [];
@@ -447,7 +441,6 @@
                 targetPeriods.push(crossings[k + 1] - crossings[k]);
             }
 
-            // 3. Szukanie w końcowej części nagrania miejsca o identycznej wysokości tonu i fazie modulacji
             const searchStartC = Math.floor(crossings.length * 0.55);
             const searchEndC = crossings.length - numCycles - 1;
             let bestEndIdx = crossings[searchEndC];
@@ -474,15 +467,18 @@
 
         async function loadSoundFile(name, extensions) {
             for (const ext of extensions) {
-                // Dodanie parametru czasu i cache: 'no-store' zapobiega wczytywaniu starego pliku z pamięci przeglądarki
-                const url = `${name}.${ext}?v=${Date.now()}`;
+                const url = `${name}.${ext}`;
                 try {
-                    const response = await fetch(url, { cache: 'no-store' });
+                    const response = await fetch(url);
                     if (!response.ok) continue;
                     const arrayBuffer = await response.arrayBuffer();
                     const buffer = await audioCtx.decodeAudioData(arrayBuffer);
                     audioBuffers[name] = buffer;
-                    loopPoints[name] = findSeamlessLoopPoints(buffer);
+
+                    // Przycinanie pętli wykonujemy TYLKO dla pliku 'priority'
+                    if (name === 'priority') {
+                        loopPoints[name] = findSeamlessLoopPoints(buffer);
+                    }
                     return;
                 } catch (e) {}
             }
@@ -495,9 +491,9 @@
             }
             if (!initPromise) {
                 initPromise = Promise.all([
-                    loadSoundFile('wilk', ['wav', 'mp3']),
-                    loadSoundFile('pies', ['wav', 'mp3']),
-                    loadSoundFile('leon', ['wav', 'mp3']),
+                    loadSoundFile('wilk', ['mp3', 'wav']),
+                    loadSoundFile('pies', ['mp3', 'wav']),
+                    loadSoundFile('leon', ['mp3', 'wav']),
                     loadSoundFile('priority', ['wav', 'mp3']),
                     loadSoundFile('horn', ['wav', 'mp3'])
                 ]);
@@ -512,20 +508,23 @@
             source.buffer = audioBuffers[bufferName];
             source.loop = loop;
 
-            // Zastosowanie wyliczonych punktów bezszwowej pętli (pomija ciszę na początku i końcu)
-            const pts = loopPoints[bufferName];
-            if (loop && pts) {
-                source.loopStart = pts.start;
-                source.loopEnd = pts.end;
-            }
-            
             const gainNode = audioCtx.createGain();
             gainNode.gain.value = volumes[bufferName] || 1.0;
             
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
+
+            // Jeśli dla danego dźwięku (czyli 'priority') są wyliczone punkty pętli, użyj ich.
+            // Wszystkie pozostałe dźwięki odtwarzaj normalnie od 0.
+            const pts = loopPoints[bufferName];
+            if (loop && pts) {
+                source.loopStart = pts.start;
+                source.loopEnd = pts.end;
+                source.start(0, pts.start);
+            } else {
+                source.start(0);
+            }
             
-            source.start(0, pts ? pts.start : 0);
             return source;
         }
 

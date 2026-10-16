@@ -2,9 +2,16 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Symulator Federal Signal AS 422 Polonia</title>
     <style>
+        * {
+            -webkit-touch-callout: none; /* Blokuje menu na iOS/Android */
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
             background-color: #16171a;
             display: flex;
@@ -13,8 +20,8 @@
             min-height: 100vh;
             margin: 0;
             font-family: 'Arial Narrow', Arial, sans-serif;
-            user-select: none;
-            touch-action: manipulation;
+            touch-action: none; /* Całkowicie blokuje gesty przeglądarki przy trzymaniu palca */
+            overflow: hidden;
         }
 
         .remote-wrapper {
@@ -123,6 +130,7 @@
                 0 3px 5px rgba(0, 0, 0, 0.7);
             transition: transform 0.06s ease, background 0.1s ease, box-shadow 0.1s ease;
             pointer-events: auto;
+            touch-action: none;
         }
 
         .btn * {
@@ -258,15 +266,11 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-light1" onclick="toggleLightBtn('btn-light1')">
                         <svg viewBox="0 0 60 60">
-                            <!-- Podstawa -->
                             <rect x="15" y="42" width="30" height="6" rx="2" class="icon-fill"/>
-                            <!-- Klosz (pusty) -->
                             <path d="M19,42 L20,23 C20,14 40,14 40,23 L41,42 Z" fill="none" class="icon-stroke" stroke-width="3.2" stroke-linejoin="round"/>
-                            <!-- Promienie lewe -->
                             <line x1="8" y1="16" x2="15" y2="20" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="7" y1="26" x2="14" y2="27" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="8" y1="36" x2="15" y2="34" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
-                            <!-- Promienie prawe -->
                             <line x1="52" y1="16" x2="45" y2="20" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="53" y1="26" x2="46" y2="27" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="52" y1="36" x2="45" y2="34" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
@@ -277,17 +281,12 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-light2" onclick="toggleLightBtn('btn-light2')">
                         <svg viewBox="0 0 60 60">
-                            <!-- Podstawa -->
                             <rect x="15" y="42" width="30" height="6" rx="2" class="icon-fill"/>
-                            <!-- Klosz obrys -->
                             <path d="M19,42 L20,23 C20,14 40,14 40,23 L41,42 Z" fill="none" class="icon-stroke" stroke-width="3.2" stroke-linejoin="round"/>
-                            <!-- Prawa połowa klosza wypełniona -->
                             <path d="M30,16.2 C35.5,16.2 40,18.5 40,23 L41,42 L30,42 Z" class="icon-fill"/>
-                            <!-- Promienie lewe -->
                             <line x1="8" y1="16" x2="15" y2="20" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="7" y1="26" x2="14" y2="27" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="8" y1="36" x2="15" y2="34" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
-                            <!-- Promienie prawe -->
                             <line x1="52" y1="16" x2="45" y2="20" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="53" y1="26" x2="46" y2="27" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
                             <line x1="52" y1="36" x2="45" y2="34" class="icon-stroke" stroke-width="3" stroke-linecap="round"/>
@@ -299,13 +298,11 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-grill1" onclick="toggleLightBtn('btn-grill1')">
                         <svg viewBox="0 0 60 60">
-                            <!-- Lewa lampa -->
                             <path d="M7,31 A10,9.5 0 0,0 27,31 Z" fill="none" class="icon-stroke" stroke-width="2.8" stroke-linejoin="round"/>
                             <line x1="12" y1="20" x2="12" y2="26" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
                             <line x1="17" y1="20" x2="17" y2="26" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
                             <line x1="22" y1="20" x2="22" y2="26" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
 
-                            <!-- Prawa lampa -->
                             <path d="M33,31 A10,9.5 0 0,0 53,31 Z" fill="none" class="icon-stroke" stroke-width="2.8" stroke-linejoin="round"/>
                             <line x1="38" y1="20" x2="38" y2="26" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
                             <line x1="43" y1="20" x2="43" y2="26" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
@@ -317,13 +314,11 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-grill2" onclick="toggleLightBtn('btn-grill2')">
                         <svg viewBox="0 0 60 60">
-                            <!-- Lewy reflektor -->
                             <path d="M16,20 A10,10 0 0,1 16,40 Z" fill="none" class="icon-stroke" stroke-width="2.8" stroke-linejoin="round"/>
                             <line x1="6" y1="24" x2="12" y2="24" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
                             <line x1="6" y1="30" x2="12" y2="30" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
                             <line x1="6" y1="36" x2="12" y2="36" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
 
-                            <!-- Prawy reflektor -->
                             <path d="M44,20 A10,10 0 0,0 44,40 Z" fill="none" class="icon-stroke" stroke-width="2.8" stroke-linejoin="round"/>
                             <line x1="48" y1="24" x2="54" y2="24" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
                             <line x1="48" y1="30" x2="54" y2="30" class="icon-stroke" stroke-width="2.6" stroke-linecap="round"/>
@@ -336,24 +331,16 @@
                 <div class="btn-well">
                     <div class="btn" id="btn-aux1" onclick="toggleLightBtn('btn-aux1')">
                         <svg viewBox="0 0 60 60">
-                            <!-- Górna podstawa -->
                             <line x1="16" y1="20" x2="44" y2="20" class="icon-stroke" stroke-width="3.6" stroke-linecap="round"/>
-                            <!-- Klosz pod spodem -->
                             <path d="M21,21 A9,7.5 0 0,0 39,21 Z" fill="none" class="icon-stroke" stroke-width="2.8"/>
-                            <!-- Przerywane promienie (5 wiązek po 2 kropki/kreski) -->
-                            <!-- 1 (skrajny lewy) -->
                             <line x1="18" y1="31" x2="15" y2="34" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
                             <line x1="12" y1="37" x2="9" y2="40" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
-                            <!-- 2 -->
                             <line x1="24" y1="33" x2="22" y2="37" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
                             <line x1="20" y1="41" x2="18" y2="44" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
-                            <!-- 3 (środkowy) -->
                             <line x1="30" y1="34" x2="30" y2="38" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
                             <line x1="30" y1="42" x2="30" y2="46" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
-                            <!-- 4 -->
                             <line x1="36" y1="33" x2="38" y2="37" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
                             <line x1="40" y1="41" x2="42" y2="44" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
-                            <!-- 5 (skrajny prawy) -->
                             <line x1="42" y1="31" x2="45" y2="34" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
                             <line x1="48" y1="37" x2="51" y2="40" class="icon-stroke" stroke-width="2.8" stroke-linecap="round"/>
                         </svg>
@@ -373,6 +360,11 @@
     </div>
 
     <script>
+        // Blokada menu kontekstowego przy długim przytrzymaniu palca na ekranie dotykowym
+        window.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         let audioCtx;
         const audioBuffers = {};
@@ -394,7 +386,6 @@
             'horn': 3.0
         };
 
-        // Funkcja automatycznie sprawdzająca .wav i .mp3 (dzięki czemu oba formaty działają)
         async function loadSoundFile(name, extensions) {
             for (const ext of extensions) {
                 const url = `${name}.${ext}`;
@@ -404,9 +395,7 @@
                     const arrayBuffer = await response.arrayBuffer();
                     audioBuffers[name] = await audioCtx.decodeAudioData(arrayBuffer);
                     return;
-                } catch (e) {
-                    // Próbuje kolejne rozszerzenie
-                }
+                } catch (e) {}
             }
             console.error(`Nie znaleziono pliku audio dla: ${name}`);
         }
@@ -474,15 +463,22 @@
             }
         }
 
-        // --- OBSŁUGA AIR HORN (Chwilowy) ---
+        // --- OBSŁUGA AIR HORN (Chwilowy - odporny na długie przytrzymanie na dotyku) ---
         const btnAh = document.getElementById('btn-ah');
+
+        // Obsługa dotyku (blokuje wywołanie menu systemowego)
+        btnAh.addEventListener('touchstart', startAirHorn, { passive: false });
+        btnAh.addEventListener('touchend', stopAirHorn, { passive: false });
+        btnAh.addEventListener('touchcancel', stopAirHorn, { passive: false });
+
+        // Obsługa myszy / rysika
         btnAh.addEventListener('pointerdown', startAirHorn);
         btnAh.addEventListener('pointerup', stopAirHorn);
         btnAh.addEventListener('pointerleave', stopAirHorn);
         btnAh.addEventListener('pointercancel', stopAirHorn);
 
         async function startAirHorn(e) {
-            e.preventDefault();
+            if (e && e.cancelable) e.preventDefault();
             if (isAhPressed) return;
             isAhPressed = true;
             
@@ -503,7 +499,7 @@
         }
 
         function stopAirHorn(e) {
-            if (e) e.preventDefault();
+            if (e && e.cancelable) e.preventDefault();
             if (!isAhPressed) return;
             isAhPressed = false;
             

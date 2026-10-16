@@ -376,7 +376,7 @@
         };
 
         /**
-         * Wyznacza punkty bezszwowej pętli wyłącznie dla dźwięku 'priority'
+         * Wyznacza punkty bezszwowej pętli dla dźwięków 'priority' oraz 'horn'
          */
         function findSeamlessLoopPoints(buffer) {
             const data = buffer.getChannelData(0);
@@ -467,8 +467,8 @@
                     const buffer = await audioCtx.decodeAudioData(arrayBuffer);
                     audioBuffers[name] = buffer;
 
-                    // Przycinanie pętli wykonujemy TYLKO dla pliku 'priority'
-                    if (name === 'priority') {
+                    // Przycinanie pętli wykonujemy TYLKO dla plików 'priority' oraz 'horn'
+                    if (name === 'priority' || name === 'horn') {
                         loopPoints[name] = findSeamlessLoopPoints(buffer);
                     }
                     return;
@@ -506,8 +506,8 @@
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            // Jeśli dla danego dźwięku (czyli 'priority') są wyliczone punkty pętli, użyj ich.
-            // Wszystkie pozostałe dźwięki odtwarzaj normalnie od 0.
+            // Użyj wyliczonych punktów pętli dla 'priority' oraz 'horn'.
+            // Pozostałe dźwięki ('wilk', 'pies', 'leon') odtwarzaj od 0.
             const pts = loopPoints[bufferName];
             if (loop && pts) {
                 source.loopStart = pts.start;
